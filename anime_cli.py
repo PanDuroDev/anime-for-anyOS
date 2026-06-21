@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Anime CLI Player — Stream & Play
 High-performance terminal client:
@@ -103,7 +103,7 @@ except ImportError:
     except ImportError:
         AES = None
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.live import Live
@@ -1166,7 +1166,7 @@ def print_logo():
         color = colors[idx] if idx < len(colors) else THEME['gradient5']
         styled_logo.append(line + "\n", style=f"bold {color}")
 
-    styled_logo.append(f"\n       {get_icon('sparkle')}ANIME STREAMING TERMINAL CLI{get_icon('sparkle')}\n", style=f"bold {THEME['fg']}")
+    styled_logo.append(f"\n       {get_icon('sparkle')}ANIME STREAMING TERMINAL CLI {get_icon('sparkle')}\n", style=f"bold {THEME['fg']}")
     styled_logo.append(f"            ━━━ v2.0 ━━━\n", style=f"{THEME['dim']}")
 
     panel = Panel(
@@ -1215,7 +1215,216 @@ def print_hotkey_guide(player_name):
 #  Interactive Widgets
 # ════════════════════════════════════════════════════════════
 
-def interactive_select(options, title="Select Option"):
+_cached_players = {}
+def get_cached_players():
+    global _cached_players
+    if not _cached_players:
+        _cached_players = {
+            "vlc": find_vlc(),
+            "mpv": find_mpv(),
+            "iina": find_iina(),
+            "celluloid": find_celluloid(),
+            "haruna": find_haruna(),
+        }
+    return _cached_players
+
+def clear_player_cache():
+    global _cached_players
+    _cached_players.clear()
+
+def get_context_panel(context_type, selected_idx, options, metadata=None):
+    if not metadata:
+        metadata = {}
+
+    title_text = "Information"
+    
+    players = get_cached_players()
+    vlc_ok = players.get("vlc") is not None
+    mpv_ok = players.get("mpv") is not None
+    iina_ok = players.get("iina") is not None
+    celluloid_ok = players.get("celluloid") is not None
+    haruna_ok = players.get("haruna") is not None
+
+    from rich.markup import escape
+
+    if context_type == "main_menu":
+        title_text = "System Status & Info"
+        table = Table(box=None, show_header=False, pad_edge=False)
+        table.add_column("Key", style=f"bold {THEME['fg']}")
+        table.add_column("Val", style=THEME['success'])
+        
+        player_status = "MPV" if mpv_ok else ("VLC" if vlc_ok else "None")
+        pref_player = metadata.get("pref_player", "auto").upper()
+        
+        table.add_row(f"{get_icon('play')}Preferred Player", f"{pref_player} (Active: {player_status})")
+        table.add_row(f"{get_icon('settings')}Quality", metadata.get("default_quality", "auto").upper())
+        table.add_row(f"{get_icon('direct_url')}Cookie Browser", metadata.get("pref_browser", "auto").upper())
+        table.add_row(f"{get_icon('favorite_on')}Library Size", f"{metadata.get('favorites_count', 0)} show(s)")
+        
+        al_linked = "[green]Linked[/green]" if metadata.get("anilist_linked") else "[dim]Not Linked[/dim]"
+        mal_linked = "[green]Linked[/green]" if metadata.get("mal_linked") else "[dim]Not Linked[/dim]"
+        table.add_row(f"{get_icon('watch_history')}AniList Sync", al_linked)
+        table.add_row(f"{get_icon('watch_history')}MyAnimeList Sync", mal_linked)
+
+        desc = ""
+        if selected_idx == 0:
+            desc = "Search for anime series across multiple streaming sources (WitAnime and Anime3rb) in real-time."
+        elif selected_idx == 1:
+            desc = "Directly play a WitAnime or Anime3rb anime URL without performing a search."
+        elif selected_idx == 2:
+            desc = "Browse your bookmarked library of shows, view history, and resume playing."
+        elif selected_idx == 3:
+            desc = "Configure preferred video players, stream quality, cookie sync browsers, and account integrations."
+        elif selected_idx == 4:
+            desc = "Close the application and exit back to the shell."
+
+        desc_esc = escape(desc)
+        renderables = [
+            Text("━━━ SYSTEM DIAGNOSTICS ━━━", style=f"bold {THEME['accent']}"),
+            Text(""),
+            table,
+            Text(""),
+            Text("━━━ DESCRIPTION ━━━", style=f"bold {THEME['accent']}"),
+            Text(f"\n{desc_esc}\n", style=THEME['fg']),
+            Text("━━━ QUICK CONTROLS ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(f"\n  • [bold {THEME['primary']}]↑ / ↓[/bold {THEME['primary']}]   : Move cursor\n  • [bold {THEME['primary']}]ENTER[/bold {THEME['primary']}]   : Select option\n  • [bold {THEME['primary']}]ESC[/bold {THEME['primary']}]     : Go back / Exit\n", style=THEME['fg'])
+        ]
+
+    elif context_type == "settings":
+        title_text = "Configuration Help"
+        table = Table(box=None, show_header=False, pad_edge=False)
+        table.add_column("Player", style=f"bold {THEME['fg']}")
+        table.add_column("Status", style=THEME['success'])
+        
+        table.add_row("MPV Player", "[green]Installed[/green]" if mpv_ok else "[red]Not Found[/red]")
+        table.add_row("VLC Player", "[green]Installed[/green]" if vlc_ok else "[red]Not Found[/red]")
+        if sys.platform == "darwin":
+            table.add_row("IINA Player", "[green]Installed[/green]" if iina_ok else "[red]Not Found[/red]")
+        else:
+            table.add_row("Celluloid", "[green]Installed[/green]" if celluloid_ok else "[red]Not Found[/red]")
+            table.add_row("Haruna", "[green]Installed[/green]" if haruna_ok else "[red]Not Found[/red]")
+
+        desc = ""
+        option_title = options[selected_idx] if selected_idx < len(options) else ""
+        if "Preferred Player" in option_title:
+            desc = "Choose your preferred video player. MPV is strongly recommended as it supports embedding and progress tracking. VLC is used as a fallback."
+        elif "Default Video Quality" in option_title:
+            desc = "Select your default streaming quality. If 'auto' is selected, the highest resolution available on the server will be selected."
+        elif "Cookie Sync Browser" in option_title:
+            desc = "Select which browser to extract cookies from (Chrome or Edge). Cookies are required to bypass Cloudflare Turnstile protection on WitAnime/Anime3rb."
+        elif "History Tracking" in option_title:
+            desc = "Toggle local watch history tracking. If disabled, watched episodes and watch progress won't be saved in the database."
+        elif "Auto Fullscreen" in option_title:
+            desc = "Automatically open the player in fullscreen mode upon launch."
+        elif "Custom Player Args" in option_title:
+            desc = "Specify additional command line arguments to pass directly to the player executable (e.g. `--volume=80` or `--ontop`)."
+        elif "Nerd Font Icons" in option_title:
+            desc = "Toggle Nerd Font icons support. If your terminal font supports Nerd Fonts, this enables modern high-resolution icons instead of standard Unicode."
+        elif "Accounts Integration" in option_title:
+            desc = "Link and manage MyAnimeList (MAL) or AniList accounts to sync your watch progress dynamically."
+        elif "Clear Search History" in option_title:
+            desc = "Delete all recent search queries cached in your local config.json file."
+        elif "Clear All Watch History" in option_title:
+            desc = "Warning: This will permanently delete all local bookmarks, watched episode lists, watch progress, and linked accounts from the database."
+        elif "Go Back" in option_title:
+            desc = "Return to the main menu."
+
+        desc_esc = escape(desc)
+        renderables = [
+            Text("━━━ PLAYER DIAGNOSTICS ━━━", style=f"bold {THEME['accent']}"),
+            Text(""),
+            table,
+            Text(""),
+            Text("━━━ SETTING HELP ━━━", style=f"bold {THEME['accent']}"),
+            Text(f"\n{desc_esc}\n", style=THEME['fg'])
+        ]
+        
+    elif context_type == "search_results":
+        title_text = "Search Details"
+        query = metadata.get("search_query", "")
+        selected_opt = options[selected_idx] if selected_idx < len(options) else ""
+        provider = "WitAnime" if "[WitAnime]" in selected_opt else ("Anime3rb" if "[Anime3rb]" in selected_opt else "Unknown")
+        
+        query_esc = escape(query)
+        provider_esc = escape(provider)
+        title_esc = escape(selected_opt.replace(f'[{provider}] ', ''))
+        
+        renderables = [
+            Text("━━━ SEARCH CONTEXT ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(f"\n  • [bold {THEME['primary']}]Active Query[/bold {THEME['primary']}] : '{query_esc}'\n  • [bold {THEME['primary']}]Total Results[/bold {THEME['primary']}]: {len(options)} item(s) found\n", style=THEME['fg']),
+            Text("━━━ SELECTED ITEM ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(f"\n  • [bold {THEME['primary']}]Provider[/bold {THEME['primary']}]     : {provider_esc}\n  • [bold {THEME['primary']}]Title[/bold {THEME['primary']}]        : {title_esc}\n", style=THEME['fg']),
+            Text("━━━ INSTRUCTIONS ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(f"\n  • Press [bold {THEME['success']}]ENTER[/bold {THEME['success']}] to load this anime's episode list.\n  • Press [bold {THEME['warning']}]ESC[/bold {THEME['warning']}] to return to the search input screen.\n", style=THEME['fg'])
+        ]
+
+    elif context_type == "favorites":
+        title_text = "Bookmark Details"
+        selected_opt = options[selected_idx] if selected_idx < len(options) else ""
+        show_slug = metadata.get("fav_slugs", [])[selected_idx] if selected_idx < len(metadata.get("fav_slugs", [])) else None
+        
+        title_esc = escape(selected_opt)
+        info_text_markup = f"\n  • [bold {THEME['primary']}]Title[/bold {THEME['primary']}]        : {title_esc}\n"
+        if show_slug:
+            hist = get_watch_history(show_slug)
+            last_ep = hist.get("last_watched", 0)
+            watched_eps = len(hist.get("watched", []))
+            info_text_markup += f"  • [bold {THEME['primary']}]Last Watched[/bold {THEME['primary']}]   : Episode {last_ep if last_ep > 0 else 'None'}\n"
+            info_text_markup += f"  • [bold {THEME['primary']}]Watched Count[/bold {THEME['primary']}]  : {watched_eps} episode(s)\n"
+
+        renderables = [
+            Text("━━━ LIBRARY STATS ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(f"\n  • [bold {THEME['primary']}]Total Bookmarks[/bold {THEME['primary']}] : {len(options)} show(s)\n", style=THEME['fg']),
+            Text("━━━ SELECTED BOOKMARK ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(info_text_markup, style=THEME['fg']),
+            Text("━━━ INSTRUCTIONS ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(f"\n  • Press [bold {THEME['success']}]ENTER[/bold {THEME['success']}] to open this show's episodes list.\n  • Press [bold {THEME['warning']}]ESC[/bold {THEME['warning']}] to return to the main menu.\n", style=THEME['fg'])
+        ]
+
+    elif context_type == "episode_selection":
+        title_text = "Episode Selection & Controls"
+        anime_title = metadata.get("anime_title", "Anime Show")
+        provider = metadata.get("provider", "Unknown")
+        player_name = metadata.get("player_name", "MPV")
+        
+        anime_title_esc = escape(anime_title)
+        provider_esc = escape(provider)
+        player_name_esc = escape(player_name)
+        
+        guide_text_markup = ""
+        if player_name == "MPV":
+            guide_text_markup += f"\n  • [bold {THEME['primary']}]SPACE[/bold {THEME['primary']}]         : Play / Pause\n"
+            guide_text_markup += f"  • [bold {THEME['primary']}]LEFT / RIGHT[/bold {THEME['primary']}]  : Seek Back / Forward (5s)\n"
+            guide_text_markup += f"  • [bold {THEME['primary']}]UP / DOWN[/bold {THEME['primary']}]     : Seek Back / Forward (1m)\n"
+            guide_text_markup += f"  • [bold {THEME['primary']}]9 / 0[/bold {THEME['primary']}]         : Adjust Volume\n"
+            guide_text_markup += f"  • [bold {THEME['primary']}]F[/bold {THEME['primary']}]             : Toggle Fullscreen\n"
+            guide_text_markup += f"  • [bold {THEME['error']}]Q[/bold {THEME['error']}]             : Close Player / Stop\n"
+        else: # VLC
+            guide_text_markup += f"\n  • [bold {THEME['primary']}]SPACE[/bold {THEME['primary']}]         : Play / Pause\n"
+            guide_text_markup += f"  • [bold {THEME['primary']}]ALT + ◄ / ◄[/bold {THEME['primary']}]  : Seek Back / Forward\n"
+            guide_text_markup += f"  • [bold {THEME['primary']}]CTRL + ▲ / ▼[/bold {THEME['primary']}] : Adjust Volume\n"
+            guide_text_markup += f"  • [bold {THEME['primary']}]F[/bold {THEME['primary']}]             : Toggle Fullscreen\n"
+            guide_text_markup += f"  • [bold {THEME['error']}]Q / ESC[/bold {THEME['error']}]       : Close Player / Stop\n"
+
+        renderables = [
+            Text("━━━ SHOW METADATA ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(f"\n  • [bold {THEME['primary']}]Title[/bold {THEME['primary']}]        : {anime_title_esc}\n  • [bold {THEME['primary']}]Provider[/bold {THEME['primary']}]     : {provider_esc}\n", style=THEME['fg']),
+            Text(f"━━━ {player_name_esc.upper()} HOTKEYS GUIDE ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(guide_text_markup, style=THEME['fg']),
+            Text("━━━ INSTRUCTIONS ━━━", style=f"bold {THEME['accent']}"),
+            Text.from_markup(f"\n  • Press [bold {THEME['primary']}]SPACE[/bold {THEME['primary']}] on an episode to select/deselect it.\n  • Press [bold {THEME['primary']}]A[/bold {THEME['primary']}] to toggle selection of ALL episodes.\n  • Press [bold {THEME['primary']}]F[/bold {THEME['primary']}] to toggle bookmark/favorite status.\n  • Press [bold {THEME['success']}]ENTER[/bold {THEME['success']}] to start scraping and play selected.\n", style=THEME['fg'])
+        ]
+
+    return Panel(
+        Group(*renderables),
+        title=f"[bold {THEME['primary']}] {title_text} [/bold {THEME['primary']}]",
+        border_style=THEME['border'],
+        box=rich_box.ROUNDED,
+        padding=(1, 3),
+        expand=True
+    )
+
+def interactive_select(options, title="Select Option", context_type=None, metadata=None):
     if not options:
         return -1, None
 
@@ -1224,7 +1433,6 @@ def interactive_select(options, title="Select Option"):
     scroll_offset = 0
     max_visible = 12
 
-    # Hide cursor
     if sys.stdout.isatty():
         sys.stdout.write("\033[?25l")
         sys.stdout.flush()
@@ -1232,7 +1440,6 @@ def interactive_select(options, title="Select Option"):
     try:
         def make_panel():
             nonlocal scroll_offset
-            # Clamp scroll offset
             if selected_idx < scroll_offset:
                 scroll_offset = selected_idx
             elif selected_idx >= scroll_offset + max_visible:
@@ -1240,7 +1447,6 @@ def interactive_select(options, title="Select Option"):
 
             table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 1))
 
-            # Show up arrow if items are above
             if scroll_offset > 0:
                 table.add_row(f"[dim {THEME['dim']}]    {get_icon('arrow_up')}more items above[/dim {THEME['dim']}]")
             else:
@@ -1255,25 +1461,35 @@ def interactive_select(options, title="Select Option"):
                 else:
                     table.add_row(f"    [{THEME['dim']}]{num_label}[/{THEME['dim']}] [{THEME['fg']}]{opt}[/{THEME['fg']}]")
 
-            # Show down arrow if items are below
             if scroll_offset + max_visible < len(options):
                 table.add_row(f"[dim {THEME['dim']}]    {get_icon('arrow_down')}more items below[/dim {THEME['dim']}]")
             else:
                 table.add_row("")
 
-            # Add page indicator
             page_info = f"({selected_idx + 1}/{len(options)})"
 
-            panel = Panel(
+            left_panel = Panel(
                 table,
                 title=f"[bold {THEME['primary']}] {title} [/bold {THEME['primary']}][{THEME['dim']}]{page_info}[/{THEME['dim']}]",
                 subtitle=f"[dim {THEME['dim']}]↑↓ Navigate  ⏎ Select  Esc Back[/dim {THEME['dim']}]",
                 border_style=THEME['border'],
                 box=rich_box.ROUNDED,
-                expand=False,
+                expand=True,
                 padding=(1, 3)
             )
-            return panel
+
+            width, height = shutil.get_terminal_size()
+            if not context_type or width < 90 or height < 18:
+                left_panel.expand = False
+                return left_panel
+
+            right_panel = get_context_panel(context_type, selected_idx, options, metadata)
+
+            grid = Table.grid(expand=True)
+            grid.add_column(ratio=45)
+            grid.add_column(ratio=55)
+            grid.add_row(left_panel, right_panel)
+            return grid
 
         with RawModeContext():
             with Live(make_panel(), refresh_per_second=15, transient=True) as live:
@@ -1290,14 +1506,12 @@ def interactive_select(options, title="Select Option"):
                     elif key in (KEY_ESC, KEY_CTRL_C):
                         return -1, None
     finally:
-        # Show cursor
         if sys.stdout.isatty():
             sys.stdout.write("\033[?25h")
             sys.stdout.flush()
 
 
-
-def interactive_checklist(options, title="Select Episodes", default_start_idx=0, is_favorite=False, on_toggle_favorite=None):
+def interactive_checklist(options, title="Select Episodes", default_start_idx=0, is_favorite=False, on_toggle_favorite=None, context_type=None, metadata=None):
     if not options:
         return []
 
@@ -1307,9 +1521,8 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
     max_visible = 12
     checked = [False] * len(options)
     if len(checked) > 0:
-        checked[selected_idx] = True  # Default current cursor option selected
+        checked[selected_idx] = True
 
-    # Hide cursor
     if sys.stdout.isatty():
         sys.stdout.write("\033[?25l")
         sys.stdout.flush()
@@ -1317,7 +1530,6 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
     try:
         def make_panel():
             nonlocal scroll_offset
-            # Clamp scroll offset
             if selected_idx < scroll_offset:
                 scroll_offset = selected_idx
             elif selected_idx >= scroll_offset + max_visible:
@@ -1325,7 +1537,6 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
 
             table = Table(box=None, show_header=False, pad_edge=False)
 
-            # Show up arrow if items are above
             if scroll_offset > 0:
                 table.add_row(f"[dim {THEME['dim']}]  {get_icon('arrow_up')}more items above[/dim {THEME['dim']}]")
             else:
@@ -1343,7 +1554,6 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
                 else:
                     table.add_row(f"  [{color}]{opt_text}[/{color}]")
 
-            # Show down arrow if items are below
             if scroll_offset + max_visible < len(options):
                 table.add_row(f"[dim {THEME['dim']}]  {get_icon('arrow_down')}more items below[/dim {THEME['dim']}]")
             else:
@@ -1351,25 +1561,34 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
 
             table.add_row("")
 
-            # Count selected
             sel_count = sum(checked)
             page_info = f"({selected_idx + 1}/{len(options)}) [{sel_count} selected]"
 
             fav_icon = f" [bold {THEME['error']}]{get_icon('favorite_on')}[/bold {THEME['error']}]" if is_favorite else f" [{THEME['dim']}]{get_icon('favorite_off')}[/{THEME['dim']}]"
 
-            panel = Panel(
+            left_panel = Panel(
                 table,
-                title=f"[bold {THEME['primary']}]{title}{fav_icon} {page_info}[/bold {THEME['primary']}]",
+                title=f"[bold {THEME['primary']}] {title}{fav_icon} {page_info}[/bold {THEME['primary']}]",
                 subtitle=f"[dim {THEME['dim']}]SPACE=toggle  SPACE+↕=drag  A=all  F=fav  ENTER=confirm  ESC=back[/dim {THEME['dim']}]",
                 border_style=THEME['border'],
                 box=rich_box.ROUNDED,
-                expand=False,
+                expand=True,
                 padding=(1, 2)
             )
-            return panel
 
-        # Drag-select state: press SPACE once to enter drag mode,
-        # then UP/DOWN arrows toggle each item they pass through.
+            width, height = shutil.get_terminal_size()
+            if not context_type or width < 90 or height < 18:
+                left_panel.expand = False
+                return left_panel
+
+            right_panel = get_context_panel(context_type, selected_idx, options, metadata)
+
+            grid = Table.grid(expand=True)
+            grid.add_column(ratio=45)
+            grid.add_column(ratio=55)
+            grid.add_row(left_panel, right_panel)
+            return grid
+
         last_space_time = 0.0
         last_space_toggled_idx = None
 
@@ -1377,7 +1596,6 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
             if os.name == 'nt':
                 try:
                     import ctypes
-                    # VK_SPACE is 0x20. If high bit is set, it's held down.
                     return bool(ctypes.windll.user32.GetAsyncKeyState(0x20) & 0x8000)
                 except Exception:
                     pass
@@ -1386,16 +1604,11 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
         with RawModeContext():
             with Live(make_panel(), refresh_per_second=15, transient=True) as live:
                 while True:
-                    # Check physical state of spacebar (Windows only)
                     is_held = is_space_physically_held()
-                    
-                    # Also consider it held if the last SPACE event was very recent (queue-safe fallback)
                     if time.time() - last_space_time < 0.25:
                         is_held = True
 
                     key = read_key()
-
-                    # Recheck after reading (which might have blocked)
                     is_held = is_held or is_space_physically_held()
                     if time.time() - last_space_time < 0.25:
                         is_held = True
@@ -1414,7 +1627,6 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
                         live.update(make_panel())
                     elif key == KEY_SPACE:
                         current_time = time.time()
-                        # Only toggle if it's a new press (time delta > 0.4s or cursor moved)
                         if (current_time - last_space_time > 0.4) or (selected_idx != last_space_toggled_idx):
                             checked[selected_idx] = not checked[selected_idx]
                             last_space_toggled_idx = selected_idx
@@ -1437,7 +1649,6 @@ def interactive_checklist(options, title="Select Episodes", default_start_idx=0,
                     else:
                         last_space_toggled_idx = None
     finally:
-        # Show cursor
         if sys.stdout.isatty():
             sys.stdout.write("\033[?25h")
             sys.stdout.flush()
@@ -2770,7 +2981,24 @@ def run_app():
                     f"{get_icon('settings')}Settings / Configuration",
                     f"{get_icon('exit')}Exit"
                 ]
-                choice_idx, choice_opt = interactive_select(platforms, "Main Menu")
+                fav_count = 0
+                try:
+                    conn = sqlite3.connect(get_db_path())
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM favorites")
+                    fav_count = cursor.fetchone()[0]
+                    conn.close()
+                except Exception:
+                    pass
+                menu_metadata = {
+                    "pref_player": cfg.get("preferred_player", "auto"),
+                    "default_quality": cfg.get("default_quality", "auto"),
+                    "pref_browser": cfg.get("preferred_browser", "auto"),
+                    "favorites_count": fav_count,
+                    "anilist_linked": get_account_token("anilist") is not None,
+                    "mal_linked": get_account_token("myanimelist") is not None
+                }
+                choice_idx, choice_opt = interactive_select(platforms, "Main Menu", context_type="main_menu", metadata=menu_metadata)
                 if choice_idx == 4 or choice_idx == -1:
                     # Exit
                     break
@@ -2851,7 +3079,10 @@ def run_app():
                 search_results = current["search_results"]
 
                 options = [title for title, _, _ in search_results]
-                sel_idx, sel_opt = interactive_select(options, f"Results for '{query}'")
+                results_metadata = {
+                    "search_query": query
+                }
+                sel_idx, sel_opt = interactive_select(options, f"Results for '{query}'", context_type="search_results", metadata=results_metadata)
                 if sel_idx == -1:
                     stack.pop()
                     continue
@@ -2996,8 +3227,12 @@ def run_app():
                     stack.pop()
                     continue
 
+                fav_slugs = [f["slug"] for f in favs]
+                favorites_metadata = {
+                    "fav_slugs": fav_slugs
+                }
                 options = [f"{f['title']} ({get_provider_name(f.get('is_witanime', 0))})" for f in favs]
-                sel_idx, sel_opt = interactive_select(options, "Bookmarked Anime")
+                sel_idx, sel_opt = interactive_select(options, "Bookmarked Anime", context_type="favorites", metadata=favorites_metadata)
                 if sel_idx == -1:
                     stack.pop()
                     continue
@@ -3105,7 +3340,24 @@ def run_app():
                     "Go Back"
                 ]
 
-                sel_idx, sel_opt = interactive_select(settings_opts, "Configuration / Settings")
+                fav_count = 0
+                try:
+                    conn = sqlite3.connect(get_db_path())
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM favorites")
+                    fav_count = cursor.fetchone()[0]
+                    conn.close()
+                except Exception:
+                    pass
+                settings_metadata = {
+                    "pref_player": cfg.get("preferred_player", "auto"),
+                    "default_quality": cfg.get("default_quality", "auto"),
+                    "pref_browser": cfg.get("preferred_browser", "auto"),
+                    "favorites_count": fav_count,
+                    "anilist_linked": get_account_token("anilist") is not None,
+                    "mal_linked": get_account_token("myanimelist") is not None
+                }
+                sel_idx, sel_opt = interactive_select(settings_opts, "Configuration / Settings", context_type="settings", metadata=settings_metadata)
                 if sel_idx == -1 or sel_idx == 10:
                     stack.pop()
                     continue
@@ -3284,7 +3536,7 @@ def run_app():
                 for x in eps:
                     ep_num = x['episode']
                     if ep_num in watched_list:
-                        ep_options.append(f"Episode {ep_num} [dim {THEME['dim']}](watched {get_icon('check')})[/dim {THEME['dim']}]")
+                        ep_options.append(f"Episode {ep_num} [dim {THEME['dim']}](watched {get_icon('check').strip()})[/dim {THEME['dim']}]")
                     else:
                         ep_options.append(f"Episode {ep_num}")
 
@@ -3297,12 +3549,19 @@ def run_app():
                 if current.get("auto_play", False) and len(eps) == 1:
                     selected_indices = [0]
                 else:
+                    ep_metadata = {
+                        "anime_title": anime_title,
+                        "provider": get_provider_name(is_witanime),
+                        "player_name": player_name
+                    }
                     selected_indices = interactive_checklist(
                         ep_options,
                         title=f"Select episodes ({slug})",
                         default_start_idx=default_idx,
                         is_favorite=fav_status,
-                        on_toggle_favorite=on_toggle_fav
+                        on_toggle_favorite=on_toggle_fav,
+                        context_type="episode_selection",
+                        metadata=ep_metadata
                     )
                 if not selected_indices:
                     stack.pop()
@@ -3350,6 +3609,7 @@ def run_app():
 
                     success_install = install_player(target_to_install)
                     if success_install:
+                        clear_player_cache()
                         # Re-read paths and set active player
                         vlc = find_vlc()
                         mpv = find_mpv()
