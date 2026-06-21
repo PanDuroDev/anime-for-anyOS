@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Anime CLI Player — Stream & Play
 High-performance terminal client:
@@ -215,7 +215,7 @@ def migrate_json_to_sqlite():
                 slug = fav.get("slug")
                 title = fav.get("title")
                 url = fav.get("url")
-                is_witanime = 1 if fav.get("is_witanime") else 0
+                is_witanime = int(fav.get("is_witanime", 0))
                 if slug:
                     cursor.execute(
                         "INSERT OR IGNORE INTO favorites (slug, title, url, is_witanime) VALUES (?, ?, ?, ?)",
@@ -459,7 +459,7 @@ def toggle_favorite_state(title, url, is_witanime, slug):
         else:
             cursor.execute(
                 "INSERT INTO favorites (slug, title, url, is_witanime) VALUES (?, ?, ?, ?)",
-                (slug, title, url, 1 if is_witanime else 0)
+                (slug, title, url, int(is_witanime))
             )
             ret = True
         conn.commit()
@@ -852,17 +852,23 @@ def link_myanimelist_flow():
 
 THEME = {
     "fg": "#E2E8F0",          # Slate-200 (Main text)
-    "dim": "#94A3B8",         # Slate-400 (Muted / Subtitles)
-    "border": "#4F46E5",      # Indigo-600 (Borders)
-    "primary": "#818CF8",     # Indigo-400 (Primary accent)
-    "accent": "#A78BFA",      # Lavender-400 (Secondary accent)
-    "success": "#34D399",     # Mint-400 (Success / Green)
+    "dim": "#7C8BA1",         # Muted slate (Subtitles)
+    "border": "#6C63FF",      # Vibrant Indigo (Borders)
+    "primary": "#A78BFA",     # Lavender-400 (Primary accent)
+    "accent": "#C084FC",      # Purple-400 (Secondary accent)
+    "success": "#4ADE80",     # Emerald-400 (Success / Green)
     "warning": "#FBBF24",     # Amber-400 (Warning / Yellow)
-    "error": "#F87171",       # Red-400 (Error / Red)
-    "select_bg": "#312E81",   # Dark Indigo (Highlight background)
-    "select_fg": "#FFFFFF",   # Highlight foreground
-    "checked": "#34D399",      # Checked state
-    "unchecked": "#475569"    # Slate-600 (Unchecked state)
+    "error": "#FB7185",       # Rose-400 (Error / Red)
+    "select_bg": "#312E81",   # Indigo-900 (Highlight background)
+    "select_fg": "#E0E7FF",   # Indigo-100 (Highlight foreground)
+    "checked": "#4ADE80",     # Emerald-400
+    "unchecked": "#475569",   # Slate-600
+    "gradient1": "#C084FC",
+    "gradient2": "#818CF8",
+    "gradient3": "#6366F1",
+    "gradient4": "#4F46E5",
+    "gradient5": "#4338CA",
+    "separator": "#1E293B",
 }
 
 def get_icon(name):
@@ -889,7 +895,8 @@ def get_icon(name):
         "bullet": " ",
         "arrow_up": " ",
         "arrow_down": " ",
-        "folder": " "
+        "folder": " ",
+        "sparkle": "✦ "
     }
 
     # Standard Unicode monochrome icons (highly compatible)
@@ -909,10 +916,18 @@ def get_icon(name):
         "bullet": "❯ ",
         "arrow_up": "▲ ",
         "arrow_down": "▼ ",
-        "folder": "📁 "
+        "folder": "📁 ",
+        "sparkle": "✦ "
     }
 
     return nerd_icons[name] if use_nerd else unicode_icons[name]
+
+def get_provider_name(val):
+    val = int(val)
+    if val == 1:
+        return "WitAnime"
+    else:
+        return "Anime3rb"
 
 def print_info(msg):
     console.print(f"[bold {THEME['primary']}]" + get_icon("info") + f"[/bold {THEME['primary']}] [#E2E8F0]{msg}[/#E2E8F0]")
@@ -1146,18 +1161,19 @@ def print_logo():
     ]
 
     styled_logo = Text()
-    colors = ["#A78BFA", "#818CF8", "#6366F1", "#4F46E5", "#4338CA"]
+    colors = [THEME['gradient1'], THEME['gradient2'], THEME['gradient3'], THEME['gradient4'], THEME['gradient5']]
     for idx, line in enumerate(lines):
-        color = colors[idx] if idx < len(colors) else "#4338CA"
-        styled_logo.append(line + "\n", style=color)
+        color = colors[idx] if idx < len(colors) else THEME['gradient5']
+        styled_logo.append(line + "\n", style=f"bold {color}")
 
-    styled_logo.append(f"\n          ANIME STREAMING TERMINAL CLI\n", style=f"bold {THEME['fg']}")
+    styled_logo.append(f"\n       {get_icon('sparkle')}ANIME STREAMING TERMINAL CLI{get_icon('sparkle')}\n", style=f"bold {THEME['fg']}")
+    styled_logo.append(f"            ━━━ v2.0 ━━━\n", style=f"{THEME['dim']}")
 
     panel = Panel(
         styled_logo,
         border_style=THEME['border'],
         padding=(1, 4),
-        box=rich_box.ROUNDED,
+        box=rich_box.DOUBLE,
         expand=False,
     )
     console.print(panel)
@@ -1222,25 +1238,26 @@ def interactive_select(options, title="Select Option"):
             elif selected_idx >= scroll_offset + max_visible:
                 scroll_offset = selected_idx - max_visible + 1
 
-            table = Table(box=None, show_header=False, pad_edge=False)
+            table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 1))
 
             # Show up arrow if items are above
             if scroll_offset > 0:
-                table.add_row(f"[dim {THEME['dim']}]  {get_icon('arrow_up')}more items above[/dim {THEME['dim']}]")
+                table.add_row(f"[dim {THEME['dim']}]    {get_icon('arrow_up')}more items above[/dim {THEME['dim']}]")
             else:
                 table.add_row("")
 
             visible_options = options[scroll_offset : scroll_offset + max_visible]
             for idx_rel, opt in enumerate(visible_options):
                 idx_abs = scroll_offset + idx_rel
+                num_label = f"{idx_abs + 1}."
                 if idx_abs == selected_idx:
-                    table.add_row(f"[bold {THEME['primary']}]{get_icon('bullet')}[/bold {THEME['primary']}] [bold {THEME['select_fg']} on {THEME['select_bg']}]{opt}[/bold {THEME['select_fg']} on {THEME['select_bg']}]")
+                    table.add_row(f"  [bold {THEME['accent']}]{get_icon('bullet')}[/bold {THEME['accent']}][bold {THEME['select_fg']} on {THEME['select_bg']}] {num_label} {opt} [/bold {THEME['select_fg']} on {THEME['select_bg']}]")
                 else:
-                    table.add_row(f"  [{THEME['fg']}]{opt}[/{THEME['fg']}]")
+                    table.add_row(f"    [{THEME['dim']}]{num_label}[/{THEME['dim']}] [{THEME['fg']}]{opt}[/{THEME['fg']}]")
 
             # Show down arrow if items are below
             if scroll_offset + max_visible < len(options):
-                table.add_row(f"[dim {THEME['dim']}]  {get_icon('arrow_down')}more items below[/dim {THEME['dim']}]")
+                table.add_row(f"[dim {THEME['dim']}]    {get_icon('arrow_down')}more items below[/dim {THEME['dim']}]")
             else:
                 table.add_row("")
 
@@ -1249,11 +1266,12 @@ def interactive_select(options, title="Select Option"):
 
             panel = Panel(
                 table,
-                title=f"[bold {THEME['primary']}]{title} {page_info}[/bold {THEME['primary']}]",
+                title=f"[bold {THEME['primary']}] {title} [/bold {THEME['primary']}][{THEME['dim']}]{page_info}[/{THEME['dim']}]",
+                subtitle=f"[dim {THEME['dim']}]↑↓ Navigate  ⏎ Select  Esc Back[/dim {THEME['dim']}]",
                 border_style=THEME['border'],
                 box=rich_box.ROUNDED,
                 expand=False,
-                padding=(1, 2)
+                padding=(1, 3)
             )
             return panel
 
@@ -2132,10 +2150,17 @@ def extract_slug(url):
     p = urlparse(url)
     if "anime3rb" in p.netloc:
         m = re.search(r"/titles/([^/#?]+)", p.path)
-        return m.group(1) if m else None
+        if m: return m.group(1)
     elif "witanime" in p.netloc:
         m = re.search(r"/anime/([^/#?]+)", p.path)
-        return m.group(1) if m else None
+        if m: return m.group(1)
+
+    # Generic fallback: last non-empty path segment
+    path = p.path.strip("/")
+    if path:
+        parts = path.split("/")
+        if parts:
+            return parts[-1]
     return None
 
 
@@ -2248,6 +2273,8 @@ async def search_witanime_async(query):
         return []
 
 
+
+
 # ════════════════════════════════════════════════════════════
 #  Playwright Async Scraping Engine
 # ════════════════════════════════════════════════════════════
@@ -2289,15 +2316,17 @@ async def fetch_episodes_list_async(url, is_witanime, active_cookies=None):
                 for _ in range(25):
                     title = await page.title()
                     if "Just a moment" not in title and "Attention Required" not in title:
-                        # check target page elements
-                        if is_witanime:
+                        if is_witanime == 1:
                             if await page.locator("div.episodes-card").count() > 0:
                                 success = True
                                 break
-                        else:
+                        elif is_witanime == 0:
                             if await page.locator("a[href*='/episode/']").count() > 0:
                                 success = True
                                 break
+                        else:
+                            success = True
+                            break
                     await asyncio.sleep(1.0)
 
                 if not success:
@@ -2308,7 +2337,7 @@ async def fetch_episodes_list_async(url, is_witanime, active_cookies=None):
                 soup = BeautifulSoup(html, "html.parser")
                 eps = []
 
-                if is_witanime:
+                if is_witanime == 1:
                     cards = soup.find_all("div", class_="episodes-card")
                     for idx, card in enumerate(cards):
                         title_anchor = card.find("h3").find("a") if card.find("h3") else None
@@ -2328,11 +2357,10 @@ async def fetch_episodes_list_async(url, is_witanime, active_cookies=None):
                             "episode": ep_num,
                             "page_url": ep_url
                         })
-                else:
+                elif is_witanime == 0:
                     seen = set()
                     for a in soup.find_all("a", href=True):
                         h = a["href"].strip()
-                        # extract episode number
                         m = re.search(rf"/episode/{re.escape(slug)}/(\d+)", h)
                         n = int(m.group(1)) if m else None
                         if n is not None and h not in seen:
@@ -2397,7 +2425,7 @@ async def scrape_one_stream_async(browser, ep_item, is_witanime, active_cookies,
         status_dict[ep_num] = {"status": "Loading page...", "color": "blue", "quality": "-"}
         await page.goto(url, wait_until="load")
 
-        if is_witanime:
+        if is_witanime == 1:
             status_dict[ep_num] = {"status": "Selecting server...", "color": "yellow", "quality": "-"}
             # WitAnime has watching servers
             await page.wait_for_selector("a.server-link", timeout=12000)
@@ -2482,7 +2510,7 @@ async def scrape_one_stream_async(browser, ep_item, is_witanime, active_cookies,
 
                     if resolved_stream:
                         break
-        else:
+        elif is_witanime == 0:
             # Anime3rb
             status_dict[ep_num] = {"status": "Extracting source...", "color": "yellow", "quality": "-"}
 
@@ -2736,7 +2764,7 @@ def run_app():
         try:
             if state == "MAIN_MENU":
                 platforms = [
-                    f"{get_icon('search')}Search Anime (All sources)",
+                    f"{get_icon('search')}Search Anime",
                     f"{get_icon('direct_url')}Enter URL Directly",
                     f"{get_icon('favorite_on')}Favorites / Library",
                     f"{get_icon('settings')}Settings / Configuration",
@@ -2796,9 +2824,9 @@ def run_app():
                             
                             unified = []
                             for title, href in r_3rb:
-                                unified.append((f"[Anime3rb] {title}", href, False))
+                                unified.append((f"[Anime3rb] {title}", href, 0))
                             for title, href in r_wit:
-                                unified.append((f"[WitAnime] {title}", href, True))
+                                unified.append((f"[WitAnime] {title}", href, 1))
                             return unified
                             
                         search_results = asyncio.run(perform_unified_search(query))
@@ -2827,10 +2855,10 @@ def run_app():
                 if sel_idx == -1:
                     stack.pop()
                     continue
-
                 selected_result = search_results[sel_idx]
                 anime_url = selected_result[1]
                 is_witanime = selected_result[2]
+                title_text = selected_result[0]
 
                 # Fetch episodes
                 clear_screen()
@@ -2841,7 +2869,7 @@ def run_app():
                     read_key()
                     continue
 
-                print_info(f"Target Anime Slug: {slug}")
+                print_info(f"Target URL Slug: {slug}")
 
                 # Sync cookies
                 with console.status(f"[bold {THEME['primary']}]{get_icon('watch_history')}Syncing cookies from browser profiles...[/bold {THEME['primary']}]", spinner="dots"):
@@ -2877,8 +2905,9 @@ def run_app():
                     "slug": slug,
                     "anime_url": anime_url,
                     "is_witanime": is_witanime,
-                    "title": selected_result[0],
-                    "came_from_search": True
+                    "title": title_text,
+                    "came_from_search": True,
+                    "auto_play": False
                 })
 
             elif state == "URL_INPUT":
@@ -2888,7 +2917,10 @@ def run_app():
                     continue
 
                 p = urlparse(anime_url)
-                is_witanime = "witanime" in p.netloc
+                if "witanime" in p.netloc:
+                    is_witanime = 1
+                else:
+                    is_witanime = 0
                 slug = extract_slug(anime_url)
                 if not slug:
                     print_fail(f"Could not extract slug from URL: {anime_url}. Press any key...")
@@ -2935,7 +2967,8 @@ def run_app():
                     "anime_url": anime_url,
                     "is_witanime": is_witanime,
                     "title": slug,
-                    "came_from_search": False
+                    "came_from_search": False,
+                    "auto_play": False
                 })
 
             elif state == "FAVORITES":
@@ -2950,7 +2983,7 @@ def run_app():
                             "slug": row[0],
                             "title": row[1],
                             "url": row[2],
-                            "is_witanime": bool(row[3])
+                            "is_witanime": int(row[3])
                         })
                     conn.close()
                 except Exception:
@@ -2963,7 +2996,7 @@ def run_app():
                     stack.pop()
                     continue
 
-                options = [f"{f['title']} ({'WitAnime' if f.get('is_witanime') else 'Anime3rb'})" for f in favs]
+                options = [f"{f['title']} ({get_provider_name(f.get('is_witanime', 0))})" for f in favs]
                 sel_idx, sel_opt = interactive_select(options, "Bookmarked Anime")
                 if sel_idx == -1:
                     stack.pop()
@@ -2971,7 +3004,7 @@ def run_app():
 
                 selected_fav = favs[sel_idx]
                 anime_url = selected_fav["url"]
-                is_witanime = selected_fav.get("is_witanime", False)
+                is_witanime = int(selected_fav.get("is_witanime", 0))
                 slug = selected_fav["slug"]
 
                 # Fetch episodes
@@ -3007,7 +3040,8 @@ def run_app():
                     "anime_url": anime_url,
                     "is_witanime": is_witanime,
                     "title": selected_fav["title"],
-                    "came_from_search": False
+                    "came_from_search": False,
+                    "auto_play": False
                 })
 
             elif state == "SETTINGS":
@@ -3260,13 +3294,16 @@ def run_app():
                 def on_toggle_fav():
                     return toggle_favorite_state(anime_title, anime_url, is_witanime, slug)
 
-                selected_indices = interactive_checklist(
-                    ep_options,
-                    title=f"Select episodes ({slug})",
-                    default_start_idx=default_idx,
-                    is_favorite=fav_status,
-                    on_toggle_favorite=on_toggle_fav
-                )
+                if current.get("auto_play", False) and len(eps) == 1:
+                    selected_indices = [0]
+                else:
+                    selected_indices = interactive_checklist(
+                        ep_options,
+                        title=f"Select episodes ({slug})",
+                        default_start_idx=default_idx,
+                        is_favorite=fav_status,
+                        on_toggle_favorite=on_toggle_fav
+                    )
                 if not selected_indices:
                     stack.pop()
                     continue
